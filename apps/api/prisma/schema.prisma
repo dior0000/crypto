@@ -1,0 +1,150 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Plan {
+  FREE
+  PRO
+}
+
+enum BehaviorFlagKind {
+  OVERTRADING
+  REVENGE
+  NO_STOP
+  COUNTER_TREND
+  SIZE_CREEP
+}
+
+enum TradeSide {
+  LONG
+  SHORT
+}
+
+enum TradeOutcome {
+  WIN
+  LOSS
+  BREAKEVEN
+}
+
+enum AssetClass {
+  EQUITY
+  FOREX
+  CRYPTO
+  BOND
+}
+
+model User {
+  id                     String         @id @default(cuid())
+  tgId                   String?        @unique
+  email                  String?        @unique
+  passwordHash           String?
+  plan                   Plan           @default(FREE)
+  analysesUsedThisPeriod Int            @default(0)
+  periodResetAt          DateTime       @default(now())
+  createdAt              DateTime       @default(now())
+  updatedAt              DateTime       @updatedAt
+  sessions               Session[]
+  journalEntries         JournalEntry[]
+  behaviorFlags          BehaviorFlag[]
+}
+
+model Session {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  startedAt DateTime  @default(now())
+  endedAt   DateTime?
+  ticker    String?
+  timeframe String?
+  frames    Frame[]
+
+  @@index([userId])
+}
+
+model Frame {
+  id         String     @id @default(cuid())
+  sessionId  String
+  session    Session    @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  phash      String
+  storageKey String?
+  createdAt  DateTime   @default(now())
+  analyses   Analysis[]
+
+  @@index([sessionId])
+}
+
+model Analysis {
+  id               String   @id @default(cuid())
+  frameId          String
+  frame            Frame    @relation(fields: [frameId], references: [id], onDelete: Cascade)
+  visionJson       Json
+  marketJson       Json
+  newsJson         Json?
+  observationJson  Json
+  guardrailFlagged Boolean  @default(false)
+  latencyMs        Int
+  tokenCost        Int
+  createdAt        DateTime @default(now())
+
+  @@index([frameId])
+}
+
+model Instrument {
+  id         String     @id @default(cuid())
+  symbol     String     @unique
+  name       String
+  assetClass AssetClass
+  exchange   String?
+  createdAt  DateTime   @default(now())
+
+  @@index([assetClass])
+}
+
+model NewsArticle {
+  id          String   @id @default(cuid())
+  source      String
+  url         String   @unique
+  title       String
+  summary     String?
+  tickers     String[]
+  publishedAt DateTime
+  fetchedAt   DateTime @default(now())
+
+  @@index([publishedAt])
+  @@index([tickers])
+}
+
+model JournalEntry {
+  id                 String        @id @default(cuid())
+  userId             String
+  user               User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ticker             String
+  side               TradeSide?
+  entry              Float?
+  stop               Float?
+  target             Float?
+  rr                 Float?
+  notes              String?
+  plannedBeforeEntry Boolean       @default(false)
+  outcome            TradeOutcome?
+  closedAt           DateTime?
+  createdAt          DateTime      @default(now())
+
+  @@index([userId])
+}
+
+model BehaviorFlag {
+  id         String           @id @default(cuid())
+  userId     String
+  user       User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind       BehaviorFlagKind
+  detectedAt DateTime         @default(now())
+  payload    Json
+
+  @@index([userId])
+}
