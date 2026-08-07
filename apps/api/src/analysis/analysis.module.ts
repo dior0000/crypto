@@ -9,10 +9,11 @@ import { QueueModule } from "../queue/queue.module";
 import { AnalysisService } from "./analysis.service";
 import { AnalysisProcessor } from "./analysis.processor";
 import { AnalysisController } from "./analysis.controller";
+import { ObservationsController } from "./observations.controller";
 
 @Module({
   imports: [VisionModule, MarketModule, NewsModule, JournalModule, BillingModule, QueueModule],
-  controllers: [AnalysisController],
+  controllers: [AnalysisController, ObservationsController],
   providers: [AnalysisService, AnalysisProcessor],
   exports: [AnalysisService],
 })

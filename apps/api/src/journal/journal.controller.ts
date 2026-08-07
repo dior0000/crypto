@@ -1,5 +1,5 @@
-import { Body, Controller, Get, Post, UseGuards } from "@nestjs/common";
-import { JournalEntrySchema } from "@chartmate/shared";
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, Post, UseGuards } from "@nestjs/common";
+import { JournalEntrySchema, JournalEntryUpdateSchema } from "@chartmate/shared";
 
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { CurrentUserId } from "../common/decorators/current-user.decorator";
@@ -23,6 +23,18 @@ export class JournalController {
   @Get()
   async list(@CurrentUserId() userId: string) {
     return this.journalService.listEntries(userId);
+  }
+
+  @Patch(":id")
+  async update(@CurrentUserId() userId: string, @Param("id") id: string, @Body() body: unknown) {
+    const update = JournalEntryUpdateSchema.parse(body);
+    return this.journalService.updateEntry(userId, id, update);
+  }
+
+  @Delete(":id")
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async remove(@CurrentUserId() userId: string, @Param("id") id: string) {
+    await this.journalService.deleteEntry(userId, id);
   }
 
   @Get("behavior-flags")

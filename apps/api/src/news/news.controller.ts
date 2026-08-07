@@ -12,4 +12,9 @@ export class NewsController {
   async list(@Query("ticker") ticker: string) {
     return this.newsService.listForTicker(ticker);
   }
+
+  @Get("latest")
+  async listLatest() {
+    return this.newsService.listRecent();
+  }
 }

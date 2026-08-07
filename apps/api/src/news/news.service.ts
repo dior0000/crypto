@@ -81,6 +81,14 @@ export class NewsService {
     });
   }
 
+  /** Общая лента — не привязана к тикеру, чтобы новости были видны сразу, до выбора инструмента. */
+  async listRecent(limit = 30) {
+    return this.prisma.newsArticle.findMany({
+      orderBy: { publishedAt: "desc" },
+      take: limit,
+    });
+  }
+
   /** Контекст для LLM: только факт публикации, без summary — см. NewsContextItemSchema. */
   async getContextForTicker(ticker: string): Promise<NewsContextItem[]> {
     const since = new Date(Date.now() - NEWS_LOOKBACK_HOURS * 60 * 60 * 1000);

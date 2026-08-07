@@ -25,6 +25,9 @@ export const JournalEntrySchema = z
   })
   .strict();
 
+export const JournalEntryUpdateSchema = JournalEntrySchema.partial();
+
 export type TradeSide = z.infer<typeof TradeSideSchema>;
 export type TradeOutcome = z.infer<typeof TradeOutcomeSchema>;
 export type JournalEntry = z.infer<typeof JournalEntrySchema>;
+export type JournalEntryUpdate = z.infer<typeof JournalEntryUpdateSchema>;

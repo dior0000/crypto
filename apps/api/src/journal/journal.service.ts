@@ -1,7 +1,8 @@
 import { Injectable } from "@nestjs/common";
-import { JournalEntrySchema, type JournalEntry } from "@chartmate/shared";
+import { JournalEntrySchema, JournalEntryUpdateSchema, type JournalEntry, type JournalEntryUpdate } from "@chartmate/shared";
 import type { BehaviorFlagKind } from "@prisma/client";
 
+import { AppError, APP_ERROR_CODE } from "../common/errors/app-error";
 import { PrismaService } from "../prisma/prisma.service";
 import { BehaviorFlagsService } from "./behavior-flags.service";
 
@@ -37,6 +38,29 @@ export class JournalService {
       where: { userId },
       orderBy: { createdAt: "desc" },
     });
+  }
+
+  async updateEntry(userId: string, id: string, input: JournalEntryUpdate) {
+    const update = JournalEntryUpdateSchema.parse(input);
+    await this.requireOwnedEntry(userId, id);
+
+    return this.prisma.journalEntry.update({
+      where: { id },
+      data: update,
+    });
+  }
+
+  async deleteEntry(userId: string, id: string) {
+    await this.requireOwnedEntry(userId, id);
+    await this.prisma.journalEntry.delete({ where: { id } });
+  }
+
+  private async requireOwnedEntry(userId: string, id: string) {
+    const entry = await this.prisma.journalEntry.findUnique({ where: { id } });
+    if (!entry || entry.userId !== userId) {
+      throw new AppError(APP_ERROR_CODE.JOURNAL_ENTRY_NOT_FOUND, `Запись ${id} не найдена`);
+    }
+    return entry;
   }
 
   async getUserStats(userId: string): Promise<UserTradeStats> {

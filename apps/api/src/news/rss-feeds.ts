@@ -6,4 +6,6 @@
 export const DEFAULT_NEWS_RSS_FEEDS = [
   "https://finance.yahoo.com/news/rssindex",
   "http://feeds.marketwatch.com/marketwatch/topstories/",
+  "https://www.coindesk.com/arc/outboundfeeds/rss/",
+  "https://cointelegraph.com/rss",
 ];
