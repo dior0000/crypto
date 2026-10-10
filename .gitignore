@@ -16,3 +16,4 @@ apps/extension/.output/
 prisma/generated/
 *.tsbuildinfo
 .pnpm-store/
+.tools/
