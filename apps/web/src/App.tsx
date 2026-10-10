@@ -21,6 +21,7 @@ import {
 } from "./api";
 import { clearToken, getToken, login, register } from "./auth";
 import { InstrumentIcon } from "./instrumentIcons";
+import { useLiveQuotes, formatPrice, type LiveQuoteState } from "./useLiveQuotes";
 
 const ASSET_CLASS_ORDER: InstrumentRecord["assetClass"][] = ["CRYPTO", "EQUITY", "FOREX", "BOND"];
 
@@ -34,23 +35,52 @@ const ASSET_CLASS_LABELS: Record<InstrumentRecord["assetClass"], string> = {
 type JournalRow = Awaited<ReturnType<typeof fetchJournalEntries>>[number];
 
 /** Компактный выбор инструмента: категории свёрнуты, список открывается по клику на одну из них. */
+/** Живая цена рядом с инструментом: подсвечивается на тик вверх или вниз. */
+function LivePriceTag({ quote }: { quote: LiveQuoteState | undefined }) {
+  if (!quote) return null;
+  const flash = quote.dir ? ` flash-${quote.dir}` : "";
+  return (
+    <span className={`live-price${flash}`}>
+      {formatPrice(quote.price)}
+      {quote.changePercent !== null && (
+        <span className={quote.changePercent >= 0 ? "live-change-up" : "live-change-down"}>
+          {quote.changePercent >= 0 ? "+" : ""}
+          {quote.changePercent.toFixed(2)}%
+        </span>
+      )}
+    </span>
+  );
+}
+
 function InstrumentPicker({
   instruments,
   selectedSymbol,
   onSelect,
+  openCategory,
+  onToggleCategory,
+  quotes,
 }: {
   instruments: InstrumentRecord[];
   selectedSymbol: string | null;
   onSelect: (instrument: InstrumentRecord) => void;
+  /** Поднимается наверх только там, где по открытой категории решают, на что подписываться. */
+  openCategory?: InstrumentRecord["assetClass"] | null;
+  onToggleCategory?: (assetClass: InstrumentRecord["assetClass"]) => void;
+  quotes?: Map<string, LiveQuoteState>;
 }) {
-  const [openCategory, setOpenCategory] = useState<InstrumentRecord["assetClass"] | null>(null);
+  const [ownCategory, setOwnCategory] = useState<InstrumentRecord["assetClass"] | null>(null);
+  const activeCategory = openCategory !== undefined ? openCategory : ownCategory;
+  const toggleCategory = (assetClass: InstrumentRecord["assetClass"]) => {
+    if (onToggleCategory) onToggleCategory(assetClass);
+    else setOwnCategory(ownCategory === assetClass ? null : assetClass);
+  };
 
   const categories = ASSET_CLASS_ORDER.map((assetClass) => ({
     assetClass,
     instruments: instruments.filter((instrument) => instrument.assetClass === assetClass),
   })).filter((category) => category.instruments.length > 0);
 
-  const openInstruments = categories.find((category) => category.assetClass === openCategory)?.instruments ?? [];
+  const openInstruments = categories.find((category) => category.assetClass === activeCategory)?.instruments ?? [];
 
   return (
     <div className="instrument-picker">
@@ -59,8 +89,8 @@ function InstrumentPicker({
           <button
             key={category.assetClass}
             type="button"
-            className={`instrument-picker-tab category-${category.assetClass}${openCategory === category.assetClass ? " open" : ""}`}
-            onClick={() => setOpenCategory(openCategory === category.assetClass ? null : category.assetClass)}
+            className={`instrument-picker-tab category-${category.assetClass}${activeCategory === category.assetClass ? " open" : ""}`}
+            onClick={() => toggleCategory(category.assetClass)}
           >
             {ASSET_CLASS_LABELS[category.assetClass]}
             <span className="instrument-category-count">{category.instruments.length}</span>
@@ -68,8 +98,8 @@ function InstrumentPicker({
         ))}
       </div>
 
-      {openCategory && (
-        <ul className={`instrument-results category-${openCategory}`}>
+      {activeCategory && (
+        <ul className={`instrument-results category-${activeCategory}`}>
           {openInstruments.map((instrument) => (
             <li key={instrument.id}>
               <button
@@ -81,6 +111,7 @@ function InstrumentPicker({
                 <InstrumentIcon instrument={instrument} />
                 <span className="instrument-chip-symbol">{instrument.symbol}</span>
                 <span className="instrument-chip-name">{instrument.name}</span>
+                <LivePriceTag quote={quotes?.get(instrument.symbol)} />
               </button>
             </li>
           ))}
@@ -456,6 +487,16 @@ function MarketsPanel() {
   const [news, setNews] = useState<NewsArticleRecord[]>([]);
   const [latestNews, setLatestNews] = useState<NewsArticleRecord[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [openCategory, setOpenCategory] = useState<InstrumentRecord["assetClass"] | null>(null);
+
+  // Подписываемся только на то, что видно на экране, плюс выбранный инструмент:
+  // иначе опрос провайдера уходил бы на весь каталог в 88 позиций.
+  const visibleSymbols = [
+    ...results.filter((i) => i.assetClass === openCategory).slice(0, 40).map((i) => i.symbol),
+    ...(selected ? [selected.symbol] : []),
+  ];
+  const liveQuotes = useLiveQuotes(visibleSymbols);
+  const liveSelected = selected ? liveQuotes.get(selected.symbol) : undefined;
 
   useEffect(() => {
     fetchLatestNews()
@@ -494,7 +535,22 @@ function MarketsPanel() {
       />
       {error && <p className="error">{error}</p>}
 
-      <InstrumentPicker instruments={results} selectedSymbol={selected?.symbol ?? null} onSelect={selectInstrument} />
+      <InstrumentPicker
+        instruments={results}
+        selectedSymbol={selected?.symbol ?? null}
+        onSelect={selectInstrument}
+        openCategory={openCategory}
+        onToggleCategory={(assetClass) => setOpenCategory(openCategory === assetClass ? null : assetClass)}
+        quotes={liveQuotes}
+      />
+
+      {openCategory && openCategory !== "CRYPTO" && (
+        <p className="live-source-note">
+          Цены этого класса активов идут опросом провайдера раз в 15 секунд: бесплатный тариф Twelve Data
+          допускает 8 запросов в минуту, чаще нельзя. Поток раз в секунду есть только у крипты — его отдаёт
+          WebSocket Binance.
+        </p>
+      )}
 
       {selected && quote && (
         <div className="quote-card">
@@ -502,17 +558,36 @@ function MarketsPanel() {
             <InstrumentIcon instrument={selected} />
             {selected.symbol}
           </h3>
-          <p className="quote-price">
-            {quote.price}
-            {quote.changePercent !== null && (
-              <span className={quote.changePercent >= 0 ? "quote-change-up" : "quote-change-down"}>
+          <p className={`quote-price${liveSelected?.dir ? ` flash-${liveSelected.dir}` : ""}`}>
+            {formatPrice(liveSelected?.price ?? quote.price)}
+            {(liveSelected?.changePercent ?? quote.changePercent) !== null && (
+              <span
+                className={
+                  (liveSelected?.changePercent ?? quote.changePercent ?? 0) >= 0
+                    ? "quote-change-up"
+                    : "quote-change-down"
+                }
+              >
                 {" "}
-                {quote.changePercent >= 0 ? "+" : ""}
-                {quote.changePercent.toFixed(2)}%
+                {(liveSelected?.changePercent ?? quote.changePercent ?? 0) >= 0 ? "+" : ""}
+                {(liveSelected?.changePercent ?? quote.changePercent ?? 0).toFixed(2)}%
               </span>
             )}
           </p>
-          <p className="quote-timestamp">на {new Date(quote.asOf).toLocaleString("ru-RU")}</p>
+          <p className="quote-timestamp">
+            {liveSelected ? (
+              <>
+                <span className="live-dot" aria-hidden="true" />
+                {liveSelected.source === "BINANCE_WS"
+                  ? "в реальном времени, обновление раз в секунду"
+                  : "обновление раз в 15 секунд — ограничение тарифа провайдера"}
+                {" · "}
+                {new Date(liveSelected.asOf).toLocaleTimeString("ru-RU")}
+              </>
+            ) : (
+              <>на {new Date(quote.asOf).toLocaleString("ru-RU")}</>
+            )}
+          </p>
 
           {news.length > 0 && (
             <div className="news-list">

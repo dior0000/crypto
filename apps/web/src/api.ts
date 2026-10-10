@@ -1,4 +1,4 @@
-import type { JournalEntry, JournalEntryUpdate } from "@chartmate/shared";
+import type { JournalEntry, JournalEntryUpdate, LiveQuote } from "@chartmate/shared";
 
 import { getToken } from "./auth";
 
@@ -147,4 +147,42 @@ export async function askFollowUp(observationId: string, question: string): Prom
     body: JSON.stringify({ question }),
   });
   return response.json();
+}
+
+/**
+ * Подписка на поток котировок. EventSource здесь не подходит — он не умеет
+ * слать заголовок авторизации, поэтому читаем SSE из обычного fetch.
+ * Промис завершается, когда поток закрыт или подписка отменена через signal.
+ */
+export async function streamQuotes(
+  symbols: string[],
+  onQuotes: (quotes: LiveQuote[]) => void,
+  signal: AbortSignal,
+): Promise<void> {
+  const query = encodeURIComponent(symbols.join(","));
+  const response = await authorizedFetch(`/api/market/stream?symbols=${query}`, { signal });
+  const reader = response.body?.getReader();
+  if (!reader) return;
+
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (!signal.aborted) {
+    const { value, done } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const frames = buffer.split("\n\n");
+    buffer = frames.pop() ?? "";
+
+    for (const frame of frames) {
+      const line = frame.split("\n").find((l) => l.startsWith("data:"));
+      if (!line) continue;
+      try {
+        onQuotes(JSON.parse(line.slice(5)) as LiveQuote[]);
+      } catch {
+        // битый кадр пропускаем — следующий тик придёт через секунду
+      }
+    }
+  }
 }

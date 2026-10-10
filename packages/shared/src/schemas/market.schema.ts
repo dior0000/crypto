@@ -24,3 +24,21 @@ export const MarketDataSchema = z
 
 export type OhlcvCandle = z.infer<typeof OhlcvCandleSchema>;
 export type MarketData = z.infer<typeof MarketDataSchema>;
+
+/**
+ * Котировка в потоке реального времени. Крипта приходит из WebSocket Binance
+ * (апдейт раз в секунду), остальные классы — опросом провайдера с шагом,
+ * который допускает его тариф; поэтому источник и частота указаны явно.
+ */
+export const LiveQuoteSchema = z
+  .object({
+    symbol: z.string(),
+    assetClass: AssetClassSchema,
+    price: z.number(),
+    changePercent: z.number().nullable(),
+    asOf: z.string(),
+    source: z.enum(["BINANCE_WS", "PROVIDER_POLL"]),
+  })
+  .strict();
+
+export type LiveQuote = z.infer<typeof LiveQuoteSchema>;

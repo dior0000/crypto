@@ -629,3 +629,85 @@ tbody tr:last-child td {
   overflow-y: auto;
 }
 
+
+/* --- Живые котировки --- */
+
+.live-price {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  padding: 0.1rem 0.35rem;
+  border-radius: 4px;
+  transition: background-color 0.6s ease;
+}
+
+.live-change-up,
+.quote-change-up {
+  color: #35d07f;
+}
+
+.live-change-down,
+.quote-change-down {
+  color: #ff6b6b;
+}
+
+.live-change-up,
+.live-change-down {
+  font-size: 0.78em;
+  font-weight: 500;
+}
+
+/* Подсветка тика: вспышка гаснет за 0.6 с, чтобы цифры не рябили */
+.flash-up {
+  background-color: rgba(53, 208, 127, 0.22);
+}
+
+.flash-down {
+  background-color: rgba(255, 107, 107, 0.22);
+}
+
+.quote-price {
+  font-variant-numeric: tabular-nums;
+  border-radius: 6px;
+  transition: background-color 0.6s ease;
+}
+
+.live-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 0.4rem;
+  border-radius: 50%;
+  background: #35d07f;
+  animation: live-pulse 1s ease-in-out infinite;
+}
+
+@keyframes live-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.25;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .live-dot {
+    animation: none;
+  }
+  .live-price,
+  .quote-price {
+    transition: none;
+  }
+}
+
+.live-source-note {
+  margin: 0.5rem 0 0;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: #8b93a7;
+}
