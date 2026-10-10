@@ -186,3 +186,29 @@ export async function streamQuotes(
     }
   }
 }
+
+export interface BehaviorFlagRecord {
+  id: string;
+  kind: "OVERTRADING" | "REVENGE" | "NO_STOP" | "COUNTER_TREND" | "SIZE_CREEP";
+  detectedAt: string;
+  payload: Record<string, unknown> | null;
+}
+
+export async function fetchBehaviorFlags(): Promise<BehaviorFlagRecord[]> {
+  const response = await authorizedFetch("/api/journal/behavior-flags");
+  return response.json();
+}
+
+export interface OhlcvResponse {
+  ticker: string;
+  timeframe: string;
+  assetClass: InstrumentRecord["assetClass"];
+  candles: { timestamp: number; open: number; high: number; low: number; close: number; volume: number }[];
+}
+
+export async function fetchOhlcv(symbol: string, timeframe: string): Promise<OhlcvResponse> {
+  const response = await authorizedFetch(
+    `/api/market/ohlcv?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}`,
+  );
+  return response.json();
+}

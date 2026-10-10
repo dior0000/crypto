@@ -22,6 +22,8 @@ import {
 import { clearToken, getToken, login, register } from "./auth";
 import { InstrumentIcon } from "./instrumentIcons";
 import { useLiveQuotes, formatPrice, type LiveQuoteState } from "./useLiveQuotes";
+import { DisciplinePanel } from "./DisciplinePanel";
+import { PriceChart } from "./PriceChart";
 
 const ASSET_CLASS_ORDER: InstrumentRecord["assetClass"][] = ["CRYPTO", "EQUITY", "FOREX", "BOND"];
 
@@ -193,25 +195,58 @@ function entryToForm(row: JournalRow): typeof EMPTY_FORM {
   };
 }
 
+/**
+ * R:R = путь до цели, делённый на путь до стопа. Раньше это поле заполняли
+ * руками, хотя все три цены уже введены рядом.
+ */
+function computeRiskReward(entry: string, stop: string, target: string): number | null {
+  const e = Number(entry);
+  const s = Number(stop);
+  const t = Number(target);
+  if (!entry || !stop || !target) return null;
+  if (!Number.isFinite(e) || !Number.isFinite(s) || !Number.isFinite(t)) return null;
+  const risk = Math.abs(e - s);
+  const reward = Math.abs(t - e);
+  if (risk === 0) return null;
+  return Math.round((reward / risk) * 100) / 100;
+}
+
+function RiskReward({ entry, stop, target }: { entry: string; stop: string; target: string }) {
+  const rr = computeRiskReward(entry, stop, target);
+  const risk = Math.abs(Number(entry) - Number(stop));
+  const reward = Math.abs(Number(target) - Number(entry));
+  const grade = rr === null ? "none" : rr >= 2 ? "good" : rr >= 1 ? "fair" : "poor";
+
+  return (
+    <div className={`rr-strip rr-${grade}`}>
+      <span className="rr-label">R:R</span>
+      <span className="rr-value">{rr === null ? "—" : rr.toLocaleString("ru-RU", { minimumFractionDigits: 2 })}</span>
+      <span className="rr-calc">
+        {rr === null
+          ? "нужны вход, стоп и цель"
+          : `${reward.toLocaleString("ru-RU")} ÷ ${risk.toLocaleString("ru-RU")}`}
+      </span>
+    </div>
+  );
+}
+
 function NewEntryForm({
   editingEntry,
+  defaultTicker,
   onSaved,
   onCancelEdit,
 }: {
   editingEntry: JournalRow | null;
+  /** Подставляется инструмент, выбранный в ленте: отдельного выбора в форме больше нет. */
+  defaultTicker: string;
   onSaved: () => void;
   onCancelEdit: () => void;
 }) {
-  const [form, setForm] = useState(() => (editingEntry ? entryToForm(editingEntry) : EMPTY_FORM));
+  const [form, setForm] = useState(() =>
+    editingEntry ? entryToForm(editingEntry) : { ...EMPTY_FORM, ticker: defaultTicker },
+  );
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [instruments, setInstruments] = useState<InstrumentRecord[]>([]);
-
-  useEffect(() => {
-    searchInstruments("")
-      .then(setInstruments)
-      .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)));
-  }, []);
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -224,7 +259,9 @@ function NewEntryForm({
       ...(form.entry && { entry: Number(form.entry) }),
       ...(form.stop && { stop: Number(form.stop) }),
       ...(form.target && { target: Number(form.target) }),
-      ...(form.rr && { rr: Number(form.rr) }),
+      ...(computeRiskReward(form.entry, form.stop, form.target) !== null && {
+        rr: computeRiskReward(form.entry, form.stop, form.target) as number,
+      }),
       ...(form.notes.trim() && { notes: form.notes.trim() }),
       ...(form.outcome && { outcome: form.outcome }),
     };
@@ -249,13 +286,7 @@ function NewEntryForm({
     <form onSubmit={handleSubmit} className="entry-form">
       <h2>{editingEntry ? "Редактирование записи" : "Новая запись"}</h2>
 
-      <div className="entry-form-picker">
-        <InstrumentPicker
-          instruments={instruments}
-          selectedSymbol={form.ticker || null}
-          onSelect={(instrument) => setForm({ ...form, ticker: instrument.symbol })}
-        />
-      </div>
+      <RiskReward entry={form.entry} stop={form.stop} target={form.target} />
 
       <div className="entry-form-grid">
         <label>
@@ -281,10 +312,6 @@ function NewEntryForm({
         <label>
           Цель
           <input type="number" step="any" value={form.target} onChange={(e) => setForm({ ...form, target: e.target.value })} />
-        </label>
-        <label>
-          R:R
-          <input type="number" step="any" value={form.rr} onChange={(e) => setForm({ ...form, rr: e.target.value })} />
         </label>
         <label>
           Результат
@@ -378,20 +405,17 @@ function QuestionThread({ observationId, question }: { observationId: string; qu
   );
 }
 
-function ObservationsPanel() {
+function ObservationsPanel({
+  selected,
+  timeframe,
+}: {
+  selected: InstrumentRecord | null;
+  timeframe: string;
+}) {
   const [result, setResult] = useState<ObservationRecord | null>(null);
-  const [instruments, setInstruments] = useState<InstrumentRecord[]>([]);
-  const [selected, setSelected] = useState<InstrumentRecord | null>(null);
-  const [timeframe, setTimeframe] = useState<(typeof TIMEFRAME_OPTIONS)[number]>("1h");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    searchInstruments("")
-      .then(setInstruments)
-      .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)));
-  }, []);
 
   const handleAnalyze = async () => {
     if (!selected) return;
@@ -431,27 +455,21 @@ function ObservationsPanel() {
       </p>
 
       <div className="analyze-toolbar">
-        <InstrumentPicker instruments={instruments} selectedSymbol={selected?.symbol ?? null} onSelect={setSelected} />
-        <div className="analyze-controls">
-          <select value={timeframe} onChange={(e) => setTimeframe(e.target.value as (typeof TIMEFRAME_OPTIONS)[number])}>
-            {TIMEFRAME_OPTIONS.map((tf) => (
-              <option key={tf} value={tf}>
-                {tf}
-              </option>
-            ))}
-          </select>
-          <button type="button" onClick={handleAnalyze} disabled={!selected || isAnalyzing}>
-            {isAnalyzing && <span className="spinner" aria-hidden="true" />}
-            {isAnalyzing ? "Анализирую…" : selected ? `Проанализировать ${selected.symbol}` : "Выберите инструмент"}
-          </button>
-        </div>
+        <button type="button" onClick={handleAnalyze} disabled={!selected || isAnalyzing}>
+          {isAnalyzing && <span className="spinner" aria-hidden="true" />}
+          {isAnalyzing
+            ? "Анализирую…"
+            : selected
+              ? `Проанализировать ${selected.symbol} · ${timeframe}`
+              : "Выберите инструмент в ленте"}
+        </button>
       </div>
 
       {error && <p className="error">{error}</p>}
       {notice && <p className="empty-state">{notice}</p>}
 
       {!result && !error && !notice && (
-        <p className="empty-state">Выберите инструмент выше и нажмите «Проанализировать», чтобы получить наблюдение.</p>
+        <p className="empty-state">Выберите инструмент в ленте слева и нажмите «Проанализировать», чтобы получить наблюдение.</p>
       )}
 
       {result && (
@@ -479,156 +497,221 @@ function ObservationsPanel() {
   );
 }
 
-function MarketsPanel() {
+/** Лента котировок: единственное место, где выбирают класс активов и инструмент. */
+function MarketTape({
+  instruments,
+  quotes,
+  selected,
+  onSelect,
+  openCategory,
+  onToggleCategory,
+}: {
+  instruments: InstrumentRecord[];
+  quotes: Map<string, LiveQuoteState>;
+  selected: InstrumentRecord | null;
+  onSelect: (instrument: InstrumentRecord) => void;
+  openCategory: InstrumentRecord["assetClass"] | null;
+  onToggleCategory: (assetClass: InstrumentRecord["assetClass"]) => void;
+}) {
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<InstrumentRecord[]>([]);
-  const [selected, setSelected] = useState<InstrumentRecord | null>(null);
+
+  // Каталог в 88 позиций приходит один раз, поэтому поиск фильтрует его на месте
+  const needle = query.trim().toUpperCase();
+  const filtered = needle
+    ? instruments.filter(
+        (i) => i.symbol.toUpperCase().includes(needle) || i.name.toUpperCase().includes(needle),
+      )
+    : instruments;
+
+  return (
+    <section className="panel markets-panel">
+      <div className="panel-head">
+        <h2>Лента</h2>
+        <span className="panel-hint">{instruments.length} инструментов</span>
+      </div>
+
+      <div className="tape-body">
+        <input
+          className="markets-search"
+          placeholder="Поиск: AAPL, EUR/USD, DGS10, BTCUSDT…"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+
+        <InstrumentPicker
+          instruments={filtered}
+          selectedSymbol={selected?.symbol ?? null}
+          onSelect={onSelect}
+          openCategory={openCategory}
+          onToggleCategory={onToggleCategory}
+          quotes={quotes}
+        />
+
+        {openCategory && openCategory !== "CRYPTO" && (
+          <p className="live-source-note">
+            Цены этого класса активов идут опросом провайдера раз в 15 секунд: бесплатный тариф Twelve Data
+            допускает 8 запросов в минуту, чаще нельзя. Поток раз в секунду есть только у крипты — его отдаёт
+            WebSocket Binance.
+          </p>
+        )}
+      </div>
+    </section>
+  );
+}
+
+/** Выбранный инструмент: цена из потока, свечи и новости по тикеру. */
+function InstrumentPanel({
+  selected,
+  live,
+  timeframe,
+  onTimeframe,
+}: {
+  selected: InstrumentRecord;
+  live: LiveQuoteState | undefined;
+  timeframe: string;
+  onTimeframe: (tf: string) => void;
+}) {
   const [quote, setQuote] = useState<QuoteRecord | null>(null);
   const [news, setNews] = useState<NewsArticleRecord[]>([]);
-  const [latestNews, setLatestNews] = useState<NewsArticleRecord[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [openCategory, setOpenCategory] = useState<InstrumentRecord["assetClass"] | null>(null);
 
-  // Подписываемся только на то, что видно на экране, плюс выбранный инструмент:
-  // иначе опрос провайдера уходил бы на весь каталог в 88 позиций.
-  const visibleSymbols = [
-    ...results.filter((i) => i.assetClass === openCategory).slice(0, 40).map((i) => i.symbol),
-    ...(selected ? [selected.symbol] : []),
-  ];
-  const liveQuotes = useLiveQuotes(visibleSymbols);
-  const liveSelected = selected ? liveQuotes.get(selected.symbol) : undefined;
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([fetchQuote(selected.symbol), fetchNewsForTicker(selected.symbol)])
+      .then(([nextQuote, nextNews]) => {
+        if (cancelled) return;
+        setQuote(nextQuote);
+        setNews(nextNews);
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) setError(err instanceof Error ? err.message : String(err));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selected.symbol]);
+
+  const price = live?.price ?? quote?.price ?? null;
+  const change = live?.changePercent ?? quote?.changePercent ?? null;
+
+  return (
+    <section className="panel instrument-panel">
+      <div className="instrument-head">
+        <div className="instrument-id">
+          <span className="instrument-symbol">
+            <InstrumentIcon instrument={selected} />
+            {selected.symbol}
+          </span>
+          <span className="instrument-meta">
+            {selected.name}
+            {selected.exchange ? ` · ${selected.exchange}` : ""} · {timeframe}
+          </span>
+        </div>
+
+        <div className="instrument-price">
+          <span className={`quote-price${live?.dir ? ` flash-${live.dir}` : ""}`}>
+            {price === null ? "—" : formatPrice(price)}
+          </span>
+          <span className="quote-timestamp">
+            {change !== null && (
+              <span className={change >= 0 ? "quote-change-up" : "quote-change-down"}>
+                {change >= 0 ? "+" : ""}
+                {change.toFixed(2)}%{" · "}
+              </span>
+            )}
+            {live ? (
+              <>
+                <span className="live-dot" aria-hidden="true" />
+                {live.source === "BINANCE_WS" ? "обновление раз в секунду" : "обновление раз в 15 секунд"}
+                {" · "}
+                {new Date(live.asOf).toLocaleTimeString("ru-RU")}
+              </>
+            ) : quote ? (
+              <>на {new Date(quote.asOf).toLocaleString("ru-RU")}</>
+            ) : (
+              "ждём цену…"
+            )}
+          </span>
+        </div>
+      </div>
+
+      {error && <p className="error">{error}</p>}
+
+      <div className="instrument-body">
+        <div className="chart-tfs">
+          {TIMEFRAME_OPTIONS.map((tf) => (
+            <button
+              key={tf}
+              type="button"
+              className="tf-btn"
+              aria-pressed={timeframe === tf}
+              onClick={() => onTimeframe(tf)}
+            >
+              {tf}
+            </button>
+          ))}
+        </div>
+
+        <PriceChart symbol={selected.symbol} timeframe={timeframe} livePrice={live?.price} />
+
+        {news.length > 0 && (
+          <div className="news-list">
+            <h4>Новости по инструменту</h4>
+            <ul>
+              {news.map((article) => (
+                <li key={article.id}>
+                  <a href={article.url} target="_blank" rel="noreferrer">
+                    {article.title}
+                  </a>
+                  <span className="flag-timestamp">
+                    {" "}
+                    — {article.source}, {new Date(article.publishedAt).toLocaleString("ru-RU")}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function MarketNewsPanel() {
+  const [latestNews, setLatestNews] = useState<NewsArticleRecord[]>([]);
 
   useEffect(() => {
     fetchLatestNews()
       .then(setLatestNews)
-      .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)));
+      .catch(() => {
+        // лента новостей не критична для экрана
+      });
   }, []);
 
-  useEffect(() => {
-    const handle = setTimeout(() => {
-      searchInstruments(query)
-        .then(setResults)
-        .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)));
-    }, 250);
-    return () => clearTimeout(handle);
-  }, [query]);
-
-  const selectInstrument = (instrument: InstrumentRecord) => {
-    setSelected(instrument);
-    setError(null);
-    Promise.all([fetchQuote(instrument.symbol), fetchNewsForTicker(instrument.symbol)])
-      .then(([nextQuote, nextNews]) => {
-        setQuote(nextQuote);
-        setNews(nextNews);
-      })
-      .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)));
-  };
+  if (!latestNews.length) return null;
 
   return (
-    <section className="markets-panel">
-      <h2>Рынки</h2>
-      <input
-        className="markets-search"
-        placeholder="Поиск: AAPL, EUR/USD, DGS10, BTCUSDT…"
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-      />
-      {error && <p className="error">{error}</p>}
-
-      <InstrumentPicker
-        instruments={results}
-        selectedSymbol={selected?.symbol ?? null}
-        onSelect={selectInstrument}
-        openCategory={openCategory}
-        onToggleCategory={(assetClass) => setOpenCategory(openCategory === assetClass ? null : assetClass)}
-        quotes={liveQuotes}
-      />
-
-      {openCategory && openCategory !== "CRYPTO" && (
-        <p className="live-source-note">
-          Цены этого класса активов идут опросом провайдера раз в 15 секунд: бесплатный тариф Twelve Data
-          допускает 8 запросов в минуту, чаще нельзя. Поток раз в секунду есть только у крипты — его отдаёт
-          WebSocket Binance.
-        </p>
-      )}
-
-      {selected && quote && (
-        <div className="quote-card">
-          <h3 className="quote-card-title">
-            <InstrumentIcon instrument={selected} />
-            {selected.symbol}
-          </h3>
-          <p className={`quote-price${liveSelected?.dir ? ` flash-${liveSelected.dir}` : ""}`}>
-            {formatPrice(liveSelected?.price ?? quote.price)}
-            {(liveSelected?.changePercent ?? quote.changePercent) !== null && (
-              <span
-                className={
-                  (liveSelected?.changePercent ?? quote.changePercent ?? 0) >= 0
-                    ? "quote-change-up"
-                    : "quote-change-down"
-                }
-              >
+    <section className="panel">
+      <div className="panel-head">
+        <h2>Новости рынка</h2>
+        <span className="panel-hint">RSS · раз в 10 минут</span>
+      </div>
+      <div className="news-list latest-news">
+        <ul>
+          {latestNews.map((article) => (
+            <li key={article.id}>
+              <a href={article.url} target="_blank" rel="noreferrer">
+                {article.title}
+              </a>
+              <span className="flag-timestamp">
                 {" "}
-                {(liveSelected?.changePercent ?? quote.changePercent ?? 0) >= 0 ? "+" : ""}
-                {(liveSelected?.changePercent ?? quote.changePercent ?? 0).toFixed(2)}%
+                — {article.source}, {new Date(article.publishedAt).toLocaleString("ru-RU")}
+                {article.tickers.length > 0 && ` · ${article.tickers.join(", ")}`}
               </span>
-            )}
-          </p>
-          <p className="quote-timestamp">
-            {liveSelected ? (
-              <>
-                <span className="live-dot" aria-hidden="true" />
-                {liveSelected.source === "BINANCE_WS"
-                  ? "в реальном времени, обновление раз в секунду"
-                  : "обновление раз в 15 секунд — ограничение тарифа провайдера"}
-                {" · "}
-                {new Date(liveSelected.asOf).toLocaleTimeString("ru-RU")}
-              </>
-            ) : (
-              <>на {new Date(quote.asOf).toLocaleString("ru-RU")}</>
-            )}
-          </p>
-
-          {news.length > 0 && (
-            <div className="news-list">
-              <h4>Новости по инструменту</h4>
-              <ul>
-                {news.map((article) => (
-                  <li key={article.id}>
-                    <a href={article.url} target="_blank" rel="noreferrer">
-                      {article.title}
-                    </a>
-                    <span className="flag-timestamp">
-                      {" "}
-                      — {article.source}, {new Date(article.publishedAt).toLocaleString("ru-RU")}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </div>
-      )}
-
-      {latestNews.length > 0 && (
-        <div className="news-list latest-news">
-          <h4>Последние новости рынка</h4>
-          <ul>
-            {latestNews.map((article) => (
-              <li key={article.id}>
-                <a href={article.url} target="_blank" rel="noreferrer">
-                  {article.title}
-                </a>
-                <span className="flag-timestamp">
-                  {" "}
-                  — {article.source}, {new Date(article.publishedAt).toLocaleString("ru-RU")}
-                  {article.tickers.length > 0 && ` · ${article.tickers.join(", ")}`}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
+            </li>
+          ))}
+        </ul>
+      </div>
     </section>
   );
 }
@@ -638,6 +721,22 @@ export function App() {
   const [entries, setEntries] = useState<JournalRow[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [editingEntry, setEditingEntry] = useState<JournalRow | null>(null);
+
+  // Каталог, выбранный класс и инструмент живут здесь: так выбор один на весь экран,
+  // а подписка на котировки открывается ровно одна.
+  const [instruments, setInstruments] = useState<InstrumentRecord[]>([]);
+  const [openCategory, setOpenCategory] = useState<InstrumentRecord["assetClass"] | null>("CRYPTO");
+  const [selected, setSelected] = useState<InstrumentRecord | null>(null);
+  const [timeframe, setTimeframe] = useState("1h");
+
+  const visibleSymbols = [
+    ...instruments
+      .filter((i) => i.assetClass === openCategory)
+      .slice(0, 40)
+      .map((i) => i.symbol),
+    ...(selected ? [selected.symbol] : []),
+  ];
+  const liveQuotes = useLiveQuotes(isAuthenticated ? visibleSymbols : []);
 
   const reload = () => {
     fetchJournalEntries()
@@ -657,6 +756,9 @@ export function App() {
       return;
     }
     reload();
+    searchInstruments("")
+      .then(setInstruments)
+      .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)));
   }, [isAuthenticated]);
 
   const handleLogout = () => {
@@ -682,37 +784,80 @@ export function App() {
     }
   };
 
+  const stats = {
+    total: entries.length,
+    planned: entries.filter((entry) => entry.plannedBeforeEntry).length,
+  };
+
   return (
-    <main>
-      <header>
-        <h1>ChartMate — журнал сделок</h1>
-        <p className="disclaimer">
-          Инструмент образовательный и не является инвестиционной рекомендацией. ChartMate не даёт торговых
-          сигналов — только наблюдения, вопросы по риск-менеджменту и статистику по вашим собственным сделкам.
+    <main className="app">
+      <header className="topbar">
+        <div className="brand">
+          Chart<span>Mate</span>
+        </div>
+        <p className="rule-chip">
+          Наблюдения и дисциплина. Без сигналов, прогнозов и целевых цен — инструмент образовательный и не
+          является инвестиционной рекомендацией.
         </p>
+        {isAuthenticated && (
+          <div className="topbar-right">
+            <button type="button" className="link-button" onClick={handleLogout}>
+              Выйти
+            </button>
+          </div>
+        )}
       </header>
 
       {!isAuthenticated && <LoginForm onAuthenticated={() => setIsAuthenticated(true)} />}
 
       {isAuthenticated && (
         <>
-          <button onClick={handleLogout}>Выйти</button>
           {error && <p className="error">{error}</p>}
 
-          <ObservationsPanel />
+          <div className="shell">
+            <aside className="zone zone-tape">
+              <MarketTape
+                instruments={instruments}
+                quotes={liveQuotes}
+                selected={selected}
+                onSelect={setSelected}
+                openCategory={openCategory}
+                onToggleCategory={(assetClass) =>
+                  setOpenCategory(openCategory === assetClass ? null : assetClass)
+                }
+              />
+            </aside>
 
-          <MarketsPanel />
+            <section className="zone zone-center">
+              <ObservationsPanel selected={selected} timeframe={timeframe} />
+              {selected && (
+                <InstrumentPanel
+                  selected={selected}
+                  live={liveQuotes.get(selected.symbol)}
+                  timeframe={timeframe}
+                  onTimeframe={setTimeframe}
+                />
+              )}
+              <MarketNewsPanel />
+            </section>
 
-          <NewEntryForm
-            key={editingEntry?.id ?? "new"}
-            editingEntry={editingEntry}
-            onSaved={() => {
-              setEditingEntry(null);
-              reload();
-            }}
-            onCancelEdit={() => setEditingEntry(null)}
-          />
+            <aside className="zone zone-side">
+              <DisciplinePanel stats={stats} />
 
+              <NewEntryForm
+                key={editingEntry?.id ?? "new"}
+                editingEntry={editingEntry}
+                defaultTicker={selected?.symbol ?? ""}
+                onSaved={() => {
+                  setEditingEntry(null);
+                  reload();
+                }}
+                onCancelEdit={() => setEditingEntry(null)}
+              />
+            </aside>
+          </div>
+
+          <div className="trades-wrap">
           <table>
             <thead>
               <tr>
@@ -750,6 +895,7 @@ export function App() {
               ))}
             </tbody>
           </table>
+          </div>
         </>
       )}
     </main>
