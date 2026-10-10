@@ -42,3 +42,30 @@ export const LiveQuoteSchema = z
   .strict();
 
 export type LiveQuote = z.infer<typeof LiveQuoteSchema>;
+
+/**
+ * Строка обзорной таблицы рынка — те же колонки, что показывает CoinMarketCap.
+ * Источник — публичный CoinGecko: он отдаёт капитализацию и предложение,
+ * которых нет у биржевого API.
+ */
+export const CoinOverviewSchema = z
+  .object({
+    id: z.string(),
+    rank: z.number().int().nullable(),
+    symbol: z.string(),
+    name: z.string(),
+    image: z.string(),
+    /** Тикер той же монеты на Binance, если он есть в нашем каталоге. */
+    tradingSymbol: z.string().nullable(),
+    price: z.number(),
+    change1h: z.number().nullable(),
+    change24h: z.number().nullable(),
+    change7d: z.number().nullable(),
+    marketCap: z.number().nullable(),
+    volume24h: z.number().nullable(),
+    circulatingSupply: z.number().nullable(),
+    sparkline7d: z.array(z.number()),
+  })
+  .strict();
+
+export type CoinOverview = z.infer<typeof CoinOverviewSchema>;

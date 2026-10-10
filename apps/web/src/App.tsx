@@ -1,10 +1,8 @@
-import type { JournalEntry, TradeOutcome, TradeSide } from "@chartmate/shared";
 import { useEffect, useState } from "react";
 
 import {
   analyzeInstrument,
   askFollowUp,
-  createJournalEntry,
   deleteJournalEntry,
   fetchJournalEntries,
   fetchLatestNews,
@@ -12,7 +10,6 @@ import {
   fetchQuote,
   searchInstruments,
   TIMEFRAME_OPTIONS,
-  updateJournalEntry,
   UnauthorizedError,
   type InstrumentRecord,
   type NewsArticleRecord,
@@ -22,7 +19,7 @@ import {
 import { clearToken, getToken, login, register } from "./auth";
 import { InstrumentIcon } from "./instrumentIcons";
 import { useLiveQuotes, formatPrice, type LiveQuoteState } from "./useLiveQuotes";
-import { DisciplinePanel } from "./DisciplinePanel";
+import { MarketOverview } from "./MarketOverview";
 import { PriceChart } from "./PriceChart";
 
 const ASSET_CLASS_ORDER: InstrumentRecord["assetClass"][] = ["CRYPTO", "EQUITY", "FOREX", "BOND"];
@@ -169,188 +166,6 @@ function LoginForm({ onAuthenticated }: { onAuthenticated: () => void }) {
   );
 }
 
-const EMPTY_FORM = {
-  ticker: "",
-  side: "" as TradeSide | "",
-  entry: "",
-  stop: "",
-  target: "",
-  rr: "",
-  notes: "",
-  plannedBeforeEntry: false,
-  outcome: "" as TradeOutcome | "",
-};
-
-function entryToForm(row: JournalRow): typeof EMPTY_FORM {
-  return {
-    ticker: row.ticker,
-    side: row.side ?? "",
-    entry: row.entry?.toString() ?? "",
-    stop: row.stop?.toString() ?? "",
-    target: row.target?.toString() ?? "",
-    rr: row.rr?.toString() ?? "",
-    notes: row.notes ?? "",
-    plannedBeforeEntry: row.plannedBeforeEntry,
-    outcome: row.outcome ?? "",
-  };
-}
-
-/**
- * R:R = путь до цели, делённый на путь до стопа. Раньше это поле заполняли
- * руками, хотя все три цены уже введены рядом.
- */
-function computeRiskReward(entry: string, stop: string, target: string): number | null {
-  const e = Number(entry);
-  const s = Number(stop);
-  const t = Number(target);
-  if (!entry || !stop || !target) return null;
-  if (!Number.isFinite(e) || !Number.isFinite(s) || !Number.isFinite(t)) return null;
-  const risk = Math.abs(e - s);
-  const reward = Math.abs(t - e);
-  if (risk === 0) return null;
-  return Math.round((reward / risk) * 100) / 100;
-}
-
-function RiskReward({ entry, stop, target }: { entry: string; stop: string; target: string }) {
-  const rr = computeRiskReward(entry, stop, target);
-  const risk = Math.abs(Number(entry) - Number(stop));
-  const reward = Math.abs(Number(target) - Number(entry));
-  const grade = rr === null ? "none" : rr >= 2 ? "good" : rr >= 1 ? "fair" : "poor";
-
-  return (
-    <div className={`rr-strip rr-${grade}`}>
-      <span className="rr-label">R:R</span>
-      <span className="rr-value">{rr === null ? "—" : rr.toLocaleString("ru-RU", { minimumFractionDigits: 2 })}</span>
-      <span className="rr-calc">
-        {rr === null
-          ? "нужны вход, стоп и цель"
-          : `${reward.toLocaleString("ru-RU")} ÷ ${risk.toLocaleString("ru-RU")}`}
-      </span>
-    </div>
-  );
-}
-
-function NewEntryForm({
-  editingEntry,
-  defaultTicker,
-  onSaved,
-  onCancelEdit,
-}: {
-  editingEntry: JournalRow | null;
-  /** Подставляется инструмент, выбранный в ленте: отдельного выбора в форме больше нет. */
-  defaultTicker: string;
-  onSaved: () => void;
-  onCancelEdit: () => void;
-}) {
-  const [form, setForm] = useState(() =>
-    editingEntry ? entryToForm(editingEntry) : { ...EMPTY_FORM, ticker: defaultTicker },
-  );
-  const [error, setError] = useState<string | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  const handleSubmit = async (event: React.FormEvent) => {
-    event.preventDefault();
-    setError(null);
-
-    const entry: JournalEntry = {
-      ticker: form.ticker.trim().toUpperCase(),
-      plannedBeforeEntry: form.plannedBeforeEntry,
-      ...(form.side && { side: form.side }),
-      ...(form.entry && { entry: Number(form.entry) }),
-      ...(form.stop && { stop: Number(form.stop) }),
-      ...(form.target && { target: Number(form.target) }),
-      ...(computeRiskReward(form.entry, form.stop, form.target) !== null && {
-        rr: computeRiskReward(form.entry, form.stop, form.target) as number,
-      }),
-      ...(form.notes.trim() && { notes: form.notes.trim() }),
-      ...(form.outcome && { outcome: form.outcome }),
-    };
-
-    setIsSubmitting(true);
-    try {
-      if (editingEntry) {
-        await updateJournalEntry(editingEntry.id, entry);
-      } else {
-        await createJournalEntry(entry);
-        setForm(EMPTY_FORM);
-      }
-      onSaved();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  return (
-    <form onSubmit={handleSubmit} className="entry-form">
-      <h2>{editingEntry ? "Редактирование записи" : "Новая запись"}</h2>
-
-      <RiskReward entry={form.entry} stop={form.stop} target={form.target} />
-
-      <div className="entry-form-grid">
-        <label>
-          Тикер
-          <input value={form.ticker} onChange={(e) => setForm({ ...form, ticker: e.target.value })} required />
-        </label>
-        <label>
-          Сторона
-          <select value={form.side} onChange={(e) => setForm({ ...form, side: e.target.value as TradeSide | "" })}>
-            <option value="">—</option>
-            <option value="LONG">LONG</option>
-            <option value="SHORT">SHORT</option>
-          </select>
-        </label>
-        <label>
-          Вход
-          <input type="number" step="any" value={form.entry} onChange={(e) => setForm({ ...form, entry: e.target.value })} />
-        </label>
-        <label>
-          Стоп
-          <input type="number" step="any" value={form.stop} onChange={(e) => setForm({ ...form, stop: e.target.value })} />
-        </label>
-        <label>
-          Цель
-          <input type="number" step="any" value={form.target} onChange={(e) => setForm({ ...form, target: e.target.value })} />
-        </label>
-        <label>
-          Результат
-          <select value={form.outcome} onChange={(e) => setForm({ ...form, outcome: e.target.value as TradeOutcome | "" })}>
-            <option value="">Открыта</option>
-            <option value="WIN">WIN</option>
-            <option value="LOSS">LOSS</option>
-            <option value="BREAKEVEN">BREAKEVEN</option>
-          </select>
-        </label>
-        <label className="checkbox-label">
-          <input
-            type="checkbox"
-            checked={form.plannedBeforeEntry}
-            onChange={(e) => setForm({ ...form, plannedBeforeEntry: e.target.checked })}
-          />
-          План был готов заранее
-        </label>
-      </div>
-      <label>
-        Заметки
-        <textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} rows={2} />
-      </label>
-      <div className="entry-form-actions">
-        <button type="submit" disabled={isSubmitting || !form.ticker.trim()}>
-          {editingEntry ? "Сохранить" : "Записать сделку"}
-        </button>
-        {editingEntry && (
-          <button type="button" className="link-button" onClick={onCancelEdit}>
-            Отменить
-          </button>
-        )}
-      </div>
-      {error && <p className="error">{error}</p>}
-    </form>
-  );
-}
-
-/** Клик по вопросу — ИИ сам раскрывает его объективными фактами по инструменту, через тот же guardrail. */
 function QuestionThread({ observationId, question }: { observationId: string; question: string }) {
   const [open, setOpen] = useState(false);
   const [reply, setReply] = useState<string | null>(null);
@@ -720,7 +535,6 @@ export function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(() => Boolean(getToken()));
   const [entries, setEntries] = useState<JournalRow[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [editingEntry, setEditingEntry] = useState<JournalRow | null>(null);
 
   // Каталог, выбранный класс и инструмент живут здесь: так выбор один на весь экран,
   // а подписка на котировки открывается ровно одна.
@@ -729,10 +543,13 @@ export function App() {
   const [selected, setSelected] = useState<InstrumentRecord | null>(null);
   const [timeframe, setTimeframe] = useState("1h");
 
+  // Крипту держим в подписке всегда: обзор рынка показывает её независимо от
+  // того, какая категория открыта в ленте. Один сокет Binance на всех.
   const visibleSymbols = [
+    ...instruments.filter((i) => i.assetClass === "CRYPTO").map((i) => i.symbol),
     ...instruments
-      .filter((i) => i.assetClass === openCategory)
-      .slice(0, 40)
+      .filter((i) => i.assetClass === openCategory && i.assetClass !== "CRYPTO")
+      .slice(0, 15)
       .map((i) => i.symbol),
     ...(selected ? [selected.symbol] : []),
   ];
@@ -765,14 +582,12 @@ export function App() {
     clearToken();
     setIsAuthenticated(false);
     setEntries([]);
-    setEditingEntry(null);
   };
 
   const handleDelete = async (id: string) => {
     if (!window.confirm("Удалить эту запись?")) return;
     try {
       await deleteJournalEntry(id);
-      if (editingEntry?.id === id) setEditingEntry(null);
       reload();
     } catch (err) {
       if (err instanceof UnauthorizedError) {
@@ -782,11 +597,6 @@ export function App() {
       }
       setError(err instanceof Error ? err.message : String(err));
     }
-  };
-
-  const stats = {
-    total: entries.length,
-    planned: entries.filter((entry) => entry.plannedBeforeEntry).length,
   };
 
   return (
@@ -829,6 +639,12 @@ export function App() {
             </aside>
 
             <section className="zone zone-center">
+              <MarketOverview
+                quotes={liveQuotes}
+                instruments={instruments}
+                selectedSymbol={selected?.symbol ?? null}
+                onSelect={setSelected}
+              />
               <ObservationsPanel selected={selected} timeframe={timeframe} />
               {selected && (
                 <InstrumentPanel
@@ -841,20 +657,6 @@ export function App() {
               <MarketNewsPanel />
             </section>
 
-            <aside className="zone zone-side">
-              <DisciplinePanel stats={stats} />
-
-              <NewEntryForm
-                key={editingEntry?.id ?? "new"}
-                editingEntry={editingEntry}
-                defaultTicker={selected?.symbol ?? ""}
-                onSaved={() => {
-                  setEditingEntry(null);
-                  reload();
-                }}
-                onCancelEdit={() => setEditingEntry(null)}
-              />
-            </aside>
           </div>
 
           <div className="trades-wrap">
@@ -883,9 +685,6 @@ export function App() {
                   <td>{entry.outcome ?? "—"}</td>
                   <td>
                     <div className="table-actions">
-                      <button type="button" className="link-button" onClick={() => setEditingEntry(entry)}>
-                        Изменить
-                      </button>
                       <button type="button" className="link-button link-button-danger" onClick={() => handleDelete(entry.id)}>
                         Удалить
                       </button>

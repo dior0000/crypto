@@ -4,6 +4,7 @@ import type { Observable } from "rxjs";
 import { map } from "rxjs/operators";
 
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
+import { CoinOverviewService } from "./coin-overview.service";
 import { InstrumentsService } from "./instruments.service";
 import { LiveQuotesService } from "./live-quotes.service";
 import { MarketDataService } from "./market.service";
@@ -18,12 +19,20 @@ export class MarketController {
     private readonly instruments: InstrumentsService,
     private readonly marketData: MarketDataService,
     private readonly liveQuotes: LiveQuotesService,
+    private readonly coinOverview: CoinOverviewService,
   ) {}
 
   @Get("instruments")
   async searchInstruments(@Query("q") query = "") {
     if (!query.trim()) return this.instruments.listAll();
     return this.instruments.search(query);
+  }
+
+  /** Обзорная таблица рынка: ранг, капитализация, объём, изменения за 1ч/24ч/7д. */
+  @Get("overview")
+  async getOverview(@Query("limit") limit?: string) {
+    const parsed = Number(limit);
+    return this.coinOverview.list(Number.isFinite(parsed) ? parsed : undefined);
   }
 
   @Get("quote")

@@ -1,4 +1,4 @@
-import type { JournalEntry, JournalEntryUpdate, LiveQuote } from "@chartmate/shared";
+import type { CoinOverview, JournalEntry, JournalEntryUpdate, LiveQuote } from "@chartmate/shared";
 
 import { getToken } from "./auth";
 
@@ -210,5 +210,10 @@ export async function fetchOhlcv(symbol: string, timeframe: string): Promise<Ohl
   const response = await authorizedFetch(
     `/api/market/ohlcv?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}`,
   );
+  return response.json();
+}
+
+export async function fetchMarketOverview(limit = 25): Promise<CoinOverview[]> {
+  const response = await authorizedFetch(`/api/market/overview?limit=${limit}`);
   return response.json();
 }

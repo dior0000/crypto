@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
 
+import { CoinOverviewService } from "./coin-overview.service";
 import { InstrumentsService } from "./instruments.service";
 import { LiveQuotesService } from "./live-quotes.service";
 import { MarketController } from "./market.controller";
@@ -11,7 +12,7 @@ import { BondProvider } from "./providers/bond.provider";
 
 @Module({
   controllers: [MarketController],
-  providers: [InstrumentsService, MarketDataService, LiveQuotesService, BinanceProvider, EquityProvider, ForexProvider, BondProvider],
+  providers: [InstrumentsService, MarketDataService, LiveQuotesService, CoinOverviewService, BinanceProvider, EquityProvider, ForexProvider, BondProvider],
   exports: [MarketDataService, InstrumentsService],
 })
 export class MarketModule {}
