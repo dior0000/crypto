@@ -713,33 +713,34 @@ tbody tr:last-child td {
 }
 
 /* ======================================================================
-   Редизайн: три зоны, латунный акцент, зелёный и красный — только за
-   направлением цены. Токены объявлены для обеих тем через light-dark().
+   Три зоны и плотная таблица рынка. Палитра — тёмно-синяя: холодные
+   поверхности и синий акцент, как в исходной теме приложения.
+   Зелёный и красный остаются только за направлением цены.
    ====================================================================== */
 
 :root {
-  --panel: light-dark(#ffffff, #1a1f28);
-  --raised: light-dark(#f4f6f9, #222835);
-  --line: light-dark(#d6dae2, #2b323f);
-  --line-soft: light-dark(#e4e7ed, #232a35);
-  --ink: light-dark(#171c24, #e8ebf0);
-  --ink-dim: light-dark(#3f4756, #aab2c0);
-  --muted: light-dark(#6a7384, #828b9b);
-  --accent: light-dark(#9a6f1c, #c9983f);
-  --accent-soft: light-dark(rgba(154, 111, 28, 0.12), rgba(201, 152, 63, 0.16));
+  --panel: light-dark(#ffffff, #16181d);
+  --raised: light-dark(#f7f7f8, #1c1f26);
+  --line: light-dark(#e1e3e8, #272a33);
+  --line-soft: light-dark(#ecedf1, #20232b);
+  --ink: light-dark(#1a1a1a, #e8e8ea);
+  --ink-dim: light-dark(#40454f, #b4b8c2);
+  --muted: light-dark(#5c6470, #8b90a0);
+  --accent: light-dark(#2563eb, #5b9dff);
+  --accent-soft: light-dark(rgba(37, 99, 235, 0.10), rgba(91, 157, 255, 0.16));
   --up: light-dark(#1f8f5f, #4cb782);
   --down: light-dark(#c33f49, #e2626b);
   --up-soft: light-dark(rgba(31, 143, 95, 0.14), rgba(76, 183, 130, 0.18));
   --down-soft: light-dark(rgba(195, 63, 73, 0.14), rgba(226, 98, 107, 0.18));
-  --clay: light-dark(#a9503a, #c9705a);
+  --clay: light-dark(#a9503a, #e0a060);
   --chart-grid: light-dark(rgba(0, 0, 0, 0.07), rgba(255, 255, 255, 0.06));
 
   --f-display: "Archivo", "Segoe UI", system-ui, sans-serif;
   --f-data: "IBM Plex Mono", ui-monospace, "Cascadia Mono", monospace;
 
-  /* Акцент приложения — латунь, а не синий: зелёный и красный заняты ценой */
-  --primary: light-dark(#9a6f1c, #c9983f);
-  --primary-contrast: #16110a;
+  /* Синий — единственный акцент интерфейса; зелёный и красный заняты ценой */
+  --primary: light-dark(#2563eb, #5b9dff);
+  --primary-contrast: #ffffff;
 }
 
 body {
