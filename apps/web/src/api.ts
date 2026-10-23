@@ -154,38 +154,66 @@ export async function askFollowUp(observationId: string, question: string): Prom
  * слать заголовок авторизации, поэтому читаем SSE из обычного fetch.
  * Промис завершается, когда поток закрыт или подписка отменена через signal.
  */
+export type StreamState = "connecting" | "live" | "retrying";
+
+/** Пауза перед переподключением: 1, 2, 4… но не дольше 15 секунд. */
+const RETRY_BASE_MS = 1_000;
+const RETRY_MAX_MS = 15_000;
+
 export async function streamQuotes(
   symbols: string[],
   onQuotes: (quotes: LiveQuote[]) => void,
   signal: AbortSignal,
+  onState?: (state: StreamState) => void,
 ): Promise<void> {
   const query = encodeURIComponent(symbols.join(","));
-  const response = await authorizedFetch(`/api/market/stream?symbols=${query}`, { signal });
-  const reader = response.body?.getReader();
-  if (!reader) return;
+  let attempt = 0;
 
-  const decoder = new TextDecoder();
-  let buffer = "";
-
+  // Поток рвётся по любой причине — перезапуск сервера, засыпание вкладки,
+  // таймаут прокси. Без переподключения цены молча застывают навсегда.
   while (!signal.aborted) {
-    const { value, done } = await reader.read();
-    if (done) break;
+    try {
+      onState?.(attempt === 0 ? "connecting" : "retrying");
+      const response = await authorizedFetch(`/api/market/stream?symbols=${query}`, { signal });
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error("Поток не открылся");
 
-    buffer += decoder.decode(value, { stream: true });
-    const frames = buffer.split("\n\n");
-    buffer = frames.pop() ?? "";
+      onState?.("live");
+      attempt = 0;
 
-    for (const frame of frames) {
-      const line = frame.split("\n").find((l) => l.startsWith("data:"));
-      if (!line) continue;
-      try {
-        onQuotes(JSON.parse(line.slice(5)) as LiveQuote[]);
-      } catch {
-        // битый кадр пропускаем — следующий тик придёт через секунду
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (!signal.aborted) {
+        const { value, done } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const frames = buffer.split("\n\n");
+        buffer = frames.pop() ?? "";
+
+        for (const frame of frames) {
+          const line = frame.split("\n").find((l) => l.startsWith("data:"));
+          if (!line) continue;
+          try {
+            onQuotes(JSON.parse(line.slice(5)) as LiveQuote[]);
+          } catch {
+            // битый кадр пропускаем — следующий тик придёт через секунду
+          }
+        }
       }
+    } catch (err) {
+      if (signal.aborted || err instanceof UnauthorizedError) throw err;
     }
+
+    if (signal.aborted) return;
+    onState?.("retrying");
+    const pause = Math.min(RETRY_BASE_MS * 2 ** attempt, RETRY_MAX_MS);
+    attempt += 1;
+    await new Promise((resolve) => setTimeout(resolve, pause));
   }
 }
+
 
 export interface BehaviorFlagRecord {
   id: string;

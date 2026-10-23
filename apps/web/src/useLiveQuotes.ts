@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { LiveQuote } from "@chartmate/shared";
 
-import { streamQuotes } from "./api";
+import { streamQuotes, type StreamState } from "./api";
 
 /** Направление последнего изменения — только для подсветки, живёт меньше секунды. */
 export interface LiveQuoteState extends LiveQuote {
@@ -17,8 +17,15 @@ const NO_QUOTES: Map<string, LiveQuoteState> = new Map();
  * Держит открытой одну подписку на переданные символы и отдаёт последние цены.
  * Пересоздаётся только когда меняется сам набор символов, а не их порядок.
  */
-export function useLiveQuotes(symbols: string[]): Map<string, LiveQuoteState> {
+export interface LiveFeed {
+  quotes: Map<string, LiveQuoteState>;
+  /** Состояние соединения — показывается рядом с ценами, чтобы замершие цифры не выдавались за живые. */
+  state: StreamState;
+}
+
+export function useLiveQuotes(symbols: string[]): LiveFeed {
   const [quotes, setQuotes] = useState<Map<string, LiveQuoteState>>(new Map());
+  const [state, setState] = useState<StreamState>("connecting");
   const key = [...new Set(symbols)].sort().join(",");
 
   useEffect(() => {
@@ -63,6 +70,7 @@ export function useLiveQuotes(symbols: string[]): Map<string, LiveQuoteState> {
         }
       },
       controller.signal,
+      setState,
     ).catch(() => {
       // обрыв потока не должен ронять панель: последние цены остаются на экране
     });
@@ -73,7 +81,7 @@ export function useLiveQuotes(symbols: string[]): Map<string, LiveQuoteState> {
     };
   }, [key]);
 
-  return key ? quotes : NO_QUOTES;
+  return { quotes: key ? quotes : NO_QUOTES, state };
 }
 
 /** Цена с нужным числом знаков: у BTC и у SOL разная «цена деления». */

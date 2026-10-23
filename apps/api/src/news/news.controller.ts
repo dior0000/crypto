@@ -17,4 +17,10 @@ export class NewsController {
   async listLatest() {
     return this.newsService.listRecent();
   }
+
+  /** Когда лента последний раз обходила фиды — видно, что сбор действительно идёт раз в минуту. */
+  @Get("status")
+  async status() {
+    return { lastIngestAt: this.newsService.getLastIngestAt(), intervalSec: 60 };
+  }
 }

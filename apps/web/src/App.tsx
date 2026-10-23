@@ -34,6 +34,17 @@ const ASSET_CLASS_LABELS: Record<InstrumentRecord["assetClass"], string> = {
 type JournalRow = Awaited<ReturnType<typeof fetchJournalEntries>>[number];
 
 /** Компактный выбор инструмента: категории свёрнуты, список открывается по клику на одну из них. */
+/** Состояние потока котировок: замершие цифры не должны выдаваться за живые. */
+function FeedStatus({ state }: { state: "connecting" | "live" | "retrying" }) {
+  const label = state === "live" ? "цены в реальном времени" : state === "connecting" ? "подключаемся…" : "связь потеряна, восстанавливаем";
+  return (
+    <span className={`feed-status feed-${state}`} title={label}>
+      <span className="feed-dot" aria-hidden="true" />
+      {label}
+    </span>
+  );
+}
+
 /** Живая цена рядом с инструментом: подсвечивается на тик вверх или вниз. */
 function LivePriceTag({ quote }: { quote: LiveQuoteState | undefined }) {
   if (!quote) return null;
@@ -492,15 +503,33 @@ function InstrumentPanel({
   );
 }
 
+/** Лента обновляется раз в минуту: сервер забирает RSS с тем же шагом. */
+const NEWS_REFRESH_MS = 60_000;
+
 function MarketNewsPanel() {
   const [latestNews, setLatestNews] = useState<NewsArticleRecord[]>([]);
+  const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
 
   useEffect(() => {
-    fetchLatestNews()
-      .then(setLatestNews)
-      .catch(() => {
-        // лента новостей не критична для экрана
-      });
+    let cancelled = false;
+
+    const load = () =>
+      fetchLatestNews()
+        .then((news) => {
+          if (cancelled) return;
+          setLatestNews(news);
+          setUpdatedAt(new Date());
+        })
+        .catch(() => {
+          // лента новостей не критична для экрана
+        });
+
+    load();
+    const handle = setInterval(load, NEWS_REFRESH_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(handle);
+    };
   }, []);
 
   if (!latestNews.length) return null;
@@ -509,7 +538,10 @@ function MarketNewsPanel() {
     <section className="panel">
       <div className="panel-head">
         <h2>Новости рынка</h2>
-        <span className="panel-hint">RSS · раз в 10 минут</span>
+        <span className="panel-hint">
+          обновление раз в минуту
+          {updatedAt && ` · ${updatedAt.toLocaleTimeString("ru-RU")}`}
+        </span>
       </div>
       <div className="news-list latest-news">
         <ul>
@@ -553,7 +585,7 @@ export function App() {
       .map((i) => i.symbol),
     ...(selected ? [selected.symbol] : []),
   ];
-  const liveQuotes = useLiveQuotes(isAuthenticated ? visibleSymbols : []);
+  const { quotes: liveQuotes, state: feedState } = useLiveQuotes(isAuthenticated ? visibleSymbols : []);
 
   const reload = () => {
     fetchJournalEntries()
@@ -609,6 +641,7 @@ export function App() {
           Наблюдения и дисциплина. Без сигналов, прогнозов и целевых цен — инструмент образовательный и не
           является инвестиционной рекомендацией.
         </p>
+        {isAuthenticated && <FeedStatus state={feedState} />}
         {isAuthenticated && (
           <div className="topbar-right">
             <button type="button" className="link-button" onClick={handleLogout}>

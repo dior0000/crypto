@@ -644,14 +644,16 @@ tbody tr:last-child td {
   transition: background-color 0.6s ease;
 }
 
+/* Цвет направления берётся из токенов. Вшитые значения были подобраны под
+   тёмный фон и на белом давали около 2:1 — ниже порога читаемости. */
 .live-change-up,
 .quote-change-up {
-  color: #35d07f;
+  color: var(--up);
 }
 
 .live-change-down,
 .quote-change-down {
-  color: #ff6b6b;
+  color: var(--down);
 }
 
 .live-change-up,
@@ -662,11 +664,11 @@ tbody tr:last-child td {
 
 /* Подсветка тика: вспышка гаснет за 0.6 с, чтобы цифры не рябили */
 .flash-up {
-  background-color: rgba(53, 208, 127, 0.22);
+  background-color: var(--up-soft);
 }
 
 .flash-down {
-  background-color: rgba(255, 107, 107, 0.22);
+  background-color: var(--down-soft);
 }
 
 .quote-price {
@@ -728,10 +730,10 @@ tbody tr:last-child td {
   --muted: light-dark(#5c6470, #8b90a0);
   --accent: light-dark(#2563eb, #5b9dff);
   --accent-soft: light-dark(rgba(37, 99, 235, 0.10), rgba(91, 157, 255, 0.16));
-  --up: light-dark(#1f8f5f, #4cb782);
-  --down: light-dark(#c33f49, #e2626b);
-  --up-soft: light-dark(rgba(31, 143, 95, 0.14), rgba(76, 183, 130, 0.18));
-  --down-soft: light-dark(rgba(195, 63, 73, 0.14), rgba(226, 98, 107, 0.18));
+  --up: light-dark(#156b48, #4cb782);
+  --down: light-dark(#b02a34, #f07d84);
+  --up-soft: light-dark(rgba(21, 107, 72, 0.12), rgba(76, 183, 130, 0.16));
+  --down-soft: light-dark(rgba(176, 42, 52, 0.12), rgba(240, 125, 132, 0.16));
   --clay: light-dark(#a9503a, #e0a060);
   --chart-grid: light-dark(rgba(0, 0, 0, 0.07), rgba(255, 255, 255, 0.06));
 
@@ -1264,4 +1266,174 @@ main.app {
 
 .spark {
   display: block;
+}
+
+/* ======================================================================
+   Визуальный слой: плотность терминала при сохранении синей палитры.
+   ====================================================================== */
+
+/* --- Состояние потока котировок --- */
+.feed-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-family: var(--f-data);
+  font-size: 0.7rem;
+  letter-spacing: 0.02em;
+  padding: 0.3rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--raised);
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.feed-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.feed-live {
+  color: var(--up);
+  border-color: color-mix(in srgb, var(--up) 35%, transparent);
+}
+
+.feed-live .feed-dot {
+  animation: feed-pulse 1.6s ease-in-out infinite;
+}
+
+.feed-retrying {
+  color: var(--down);
+  border-color: color-mix(in srgb, var(--down) 40%, transparent);
+}
+
+@keyframes feed-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+/* --- Шапка приложения --- */
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  backdrop-filter: blur(14px);
+  background: color-mix(in srgb, var(--panel) 88%, transparent);
+}
+
+.topbar .rule-chip {
+  font-size: 0.75rem;
+}
+
+/* --- Панели: заголовок читается как ярлык, а не как текст --- */
+.panel-head {
+  position: relative;
+  background: linear-gradient(to bottom, color-mix(in srgb, var(--primary) 5%, transparent), transparent);
+}
+
+.panel-head h2 {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.panel-head h2::before {
+  content: "";
+  width: 3px;
+  height: 0.85em;
+  border-radius: 2px;
+  background: var(--primary);
+}
+
+/* --- Таблица рынка: шапка липнет, строки отделяются подсветкой --- */
+.overview-scroll {
+  max-height: 70vh;
+  overflow-y: auto;
+}
+
+.overview-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--panel);
+  box-shadow: inset 0 -1px 0 var(--line);
+  border-bottom: none;
+}
+
+.overview-table tbody tr {
+  transition: background-color 0.12s ease;
+}
+
+.overview-table tr.clickable:hover td {
+  background: color-mix(in srgb, var(--primary) 7%, transparent);
+}
+
+.overview-table tr.selected td {
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  box-shadow: inset 3px 0 0 var(--primary);
+}
+
+.overview-table .col-rank {
+  font-size: 0.68rem;
+  opacity: 0.7;
+}
+
+.coin-logo {
+  box-shadow: 0 0 0 1px var(--line);
+}
+
+/* --- Лента: выбранная строка опирается на акцент, а не на фон --- */
+.markets-panel .instrument-chip {
+  transition: background-color 0.12s ease, border-color 0.12s ease;
+}
+
+.markets-panel .instrument-chip:hover {
+  background: color-mix(in srgb, var(--primary) 7%, transparent);
+}
+
+.markets-panel .live-price {
+  font-feature-settings: "tnum";
+}
+
+/* --- Карточка инструмента: цена как главный объект экрана --- */
+.instrument-head {
+  background: linear-gradient(135deg, color-mix(in srgb, var(--primary) 8%, transparent), transparent 60%);
+}
+
+.instrument-price .quote-price {
+  letter-spacing: -0.03em;
+}
+
+/* --- Таблица сделок внизу: отделить от основного потока --- */
+.trades-wrap table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.trades-wrap th {
+  font-family: var(--f-data);
+  font-size: 0.64rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-weight: 400;
+  text-align: left;
+  padding: 0.6rem 0.75rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.trades-wrap td {
+  padding: 0.55rem 0.75rem;
+  border-bottom: 1px solid var(--line-soft);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .feed-live .feed-dot { animation: none; }
 }
